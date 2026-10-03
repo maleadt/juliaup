@@ -1,0 +1,99 @@
+name: Preview release
+
+# Builds portable juliaup binaries (no self-update) and publishes them as a
+# GitHub prerelease, for handing a preview build to testers. Triggered by
+# pushing a `preview-*` tag, which the regular release workflow (`v*` tags)
+# ignores.
+
+on:
+  push:
+    tags:
+      - 'preview-*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            tool: cross
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            tool: cross
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            tool: cargo
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            tool: cargo
+          - target: x86_64-pc-windows-gnu
+            runner: windows-latest
+            tool: cargo
+            toolchain-suffix: -x86_64-pc-windows-gnu
+    steps:
+    - uses: actions/checkout@v7
+    - if: ${{ contains(matrix.target, '-musl') }}
+      run: sudo apt-get install musl-tools
+    - name: Resolve toolchain from rust-toolchain.toml
+      id: toolchain
+      shell: bash
+      run: |
+        ver=$(grep '^channel = ' rust-toolchain.toml | sed 's/channel = "\(.*\)"/\1/')
+        echo "name=${ver}${{ matrix.toolchain-suffix }}" >> "$GITHUB_OUTPUT"
+    - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+      with:
+        toolchain: ${{ steps.toolchain.outputs.name }}
+        target: ${{ matrix.target }}
+        cache-key: ${{ matrix.target }}
+    - uses: clechasseur/rs-cargo@a12d4742fa9b832ccb29dc394a68ab577b0c9fb8 # v5.1.0
+      with:
+        command: build
+        tool: ${{ matrix.tool }}
+        args: --release --bin juliaup --bin julia --target ${{ matrix.target }} --features dummy
+      env:
+        AWS_LC_SYS_CMAKE_BUILDER: "1"
+    - name: Package
+      shell: bash
+      run: |
+        mkdir public
+        cd target/${{ matrix.target }}/release
+        name=juliaup-${{ github.ref_name }}-${{ matrix.target }}
+        if [[ "${{ matrix.target }}" == *windows* ]]; then
+          7z a ../../../public/$name.zip juliaup.exe julia.exe
+        else
+          tar -czvf ../../../public/$name.tar.gz juliaup julia
+        fi
+    - uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.target }}
+        path: public/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/download-artifact@v8
+      with:
+        path: public
+        merge-multiple: true
+    - name: Create prerelease
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        sed "s/@TAG@/${{ github.ref_name }}/g" PREVIEW.md > notes.md
+        cd public
+        sha256sum * > SHA256SUMS
+        gh release create "${{ github.ref_name }}" * \
+          --repo "${{ github.repository }}" \
+          --prerelease \
+          --title "${{ github.ref_name }}" \
+          --notes-file ../notes.md
