@@ -34,6 +34,7 @@ pub mod global_paths;
 pub mod jsonstructs_versionsdb;
 pub mod nightlies_db;
 pub mod operations;
+pub mod release_variants;
 pub mod utils;
 pub mod version_selection;
 pub mod versions_file;

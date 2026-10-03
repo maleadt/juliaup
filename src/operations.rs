@@ -958,7 +958,8 @@ pub fn download_version_to_temp(
         #[cfg(target_os = "macos")]
         let used_dmg = {
             let (_, used_dmg) =
-                try_download_dmg_with_fallback(&download_url, temp_dir.path(), false)?;
+                try_download_dmg_with_fallback(&download_url, temp_dir.path(), false)
+                    .map_err(|err| explain_download_error(fullversion, err))?;
             used_dmg
         };
 
@@ -977,11 +978,20 @@ pub fn download_version_to_temp(
 
         #[cfg(not(target_os = "macos"))]
         {
-            download_extract_sans_parent(download_url.as_ref(), temp_dir.path(), 1)?;
+            download_extract_sans_parent(download_url.as_ref(), temp_dir.path(), 1)
+                .map_err(|err| explain_download_error(fullversion, err))?;
         }
     }
 
     Ok(temp_dir)
+}
+
+fn explain_download_error(fullversion: &str, err: Error) -> Error {
+    if crate::release_variants::is_variant_version(fullversion) {
+        crate::release_variants::missing_build_error(fullversion, err)
+    } else {
+        err
+    }
 }
 
 /// Commits a version previously downloaded by [`download_version_to_temp`] into

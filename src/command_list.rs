@@ -1,4 +1,5 @@
 use crate::operations::{available_nightly_channels, nightlies_db_for_listing};
+use crate::release_variants::{is_variant_channel, RELEASE_VARIANTS};
 use crate::{global_paths::GlobalPaths, versions_file::load_versions_db};
 use anyhow::{Context, Result};
 use cli_table::{
@@ -26,9 +27,12 @@ pub fn run_command_list(paths: &GlobalPaths) -> Result<()> {
         .map(|(name, version)| ChannelRow { name, version })
         .collect();
 
+    // Release variants are derived for every channel, whether or not the
+    // build exists, so they are only mentioned below the table.
     let rows_in_table: Vec<_> = versiondb_data
         .available_channels
         .iter()
+        .filter(|(name, _)| !is_variant_channel(name))
         .map(|i| -> ChannelRow {
             ChannelRow {
                 name: i.0.to_string(),
@@ -50,6 +54,13 @@ pub fn run_command_list(paths: &GlobalPaths) -> Result<()> {
                     .build(),
             ),
     )?;
+
+    eprintln!(
+        "\nRelease channels can also be installed as {} builds (e.g. `release{}`, `1.13{}`) on some platforms; availability is checked when installing.",
+        RELEASE_VARIANTS.join(", "),
+        RELEASE_VARIANTS[0],
+        RELEASE_VARIANTS[0]
+    );
 
     Ok(())
 }

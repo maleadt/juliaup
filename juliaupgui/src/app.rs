@@ -3113,6 +3113,7 @@ fn build_available(
     let rows: Vec<AvailableRow> = versiondb
         .available_channels
         .iter()
+        .filter(|(ch, _)| !juliaup::release_variants::is_variant_channel(ch))
         .sorted_by(|(a, _), (b, _)| cmp(a, b))
         .map(|(ch, info)| AvailableRow {
             channel: ch.clone(),

@@ -8,6 +8,7 @@ use crate::operations::create_symlink;
 use crate::operations::{
     commit_version_install, download_version_to_temp, install_non_db_version, update_version_db,
 };
+use crate::release_variants::RELEASE_VARIANTS;
 use crate::utils::{print_juliaup_style, JuliaupMessageType};
 use crate::versions_file::load_versions_db;
 use anyhow::{anyhow, bail, Context, Result};
@@ -73,9 +74,9 @@ fn commit_downloaded_channel(
 
 pub fn run_command_add(channel: &str, paths: &GlobalPaths) -> Result<()> {
     let name = ChannelName::parse(channel)?;
-    if !name.variants.is_empty() && !name.is_nightly() {
+    if !name.variants.is_empty() && name.is_pr() {
         bail!(
-            "'{}' is not a valid channel name: build variants such as `{}` are only available for nightly channels (e.g. `nightly{}`).",
+            "'{}' is not a valid channel name: build variants such as `{}` are only available for nightly and release channels (e.g. `nightly{}`).",
             channel,
             name.variant_suffix(),
             name.variant_suffix()
@@ -94,10 +95,20 @@ pub fn run_command_add(channel: &str, paths: &GlobalPaths) -> Result<()> {
         .available_channels
         .get(channel)
         .ok_or_else(|| {
-            anyhow!(
-                "'{}' is not a valid Julia version or channel name.",
-                channel
-            )
+            if name.variants.is_empty() {
+                anyhow!(
+                    "'{}' is not a valid Julia version or channel name.",
+                    channel
+                )
+            } else {
+                anyhow!(
+                    "'{}' is not a valid Julia version or channel name. Releases are only available as {} builds (e.g. `release{}`) for some platforms; other build variants are only available for nightly channels (e.g. `nightly{}`).",
+                    channel,
+                    RELEASE_VARIANTS.join(", "),
+                    RELEASE_VARIANTS[0],
+                    name.variant_suffix()
+                )
+            }
         })?
         .version;
 

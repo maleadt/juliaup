@@ -30,7 +30,7 @@ pub fn load_versions_db(paths: &GlobalPaths) -> Result<JuliaupVersionDB> {
         Err(_) => None,
     };
 
-    let db = match local_version_db {
+    let mut db = match local_version_db {
         Some(local_version_db) => {
             if let Ok(version) = Version::parse(&local_version_db.version) {
                 if version >= get_bundled_dbversion().unwrap() {
@@ -44,6 +44,8 @@ pub fn load_versions_db(paths: &GlobalPaths) -> Result<JuliaupVersionDB> {
         }
         None => load_vendored_db().with_context(|| "Failed to load vendored version db.")?,
     };
+
+    crate::release_variants::add_to(&mut db);
 
     Ok(db)
 }
