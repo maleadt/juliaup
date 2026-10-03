@@ -44,6 +44,25 @@ use tempfile::TempDir;
 use tempfile::TempPath;
 use url::Url;
 
+/// A download that the server answered with an unsuccessful HTTP status.
+#[derive(Debug)]
+pub struct HttpStatusError {
+    pub url: String,
+    pub status: u16,
+}
+
+impl std::fmt::Display for HttpStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Failed to download from url `{}` (HTTP status {}).",
+            self.url, self.status
+        )
+    }
+}
+
+impl std::error::Error for HttpStatusError {}
+
 // Progress bar prefix with proper indentation to match other messages (12 characters wide, right-aligned)
 const DOWNLOADING_PREFIX: &str = " Downloading";
 
@@ -485,6 +504,15 @@ fn download_extract_archive(
         .send()
         .with_context(|| format!("Failed to download from url `{}`.", url))?;
 
+    // Without this, an error page would be fed to the extractor.
+    if !response.status().is_success() {
+        return Err(HttpStatusError {
+            url: url.to_string(),
+            status: response.status().as_u16(),
+        }
+        .into());
+    }
+
     let content_length = response.content_length();
 
     let pb = match content_length {
@@ -559,9 +587,13 @@ fn download_extract_archive(
         .join()
         .with_context(|| "Failed to complete async download operation.")?;
 
-    http_response
-        .EnsureSuccessStatusCode()
-        .with_context(|| format!("Failed to download from `{}`.", url))?;
+    if !http_response.IsSuccessStatusCode()? {
+        return Err(HttpStatusError {
+            url: url.to_string(),
+            status: http_response.StatusCode()?.0 as u16,
+        }
+        .into());
+    }
 
     // Extract etag if present, otherwise return empty string
     // Empty etag is valid for regular version installs from servers without etag support
